@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css/style.css">
+    <title>MongoDB MyAdmin</title>
+</head>
+<body>
+    <div id="header">
+        <div id="header-info">
+            <div id="header-info-brand">
+                MongoDB MyAdmin
+            </div>
+            <div id="header-info-address">
+            
+            </div>
+        </div>
+        
+        <button class="btn-big" onclick="newConnect()">Połącz z serwerem MongoDB</button>
+    </div>
+    
+    <div id="main">
+        <div id="dbs">
+            <p id="dbs-info">Bieżąca baza danych: </p>
+            <div id="dbs-opers">
+                <button class="btn-add" onclick="addDB()">nowa baza danych</button>
+                <button class="btn-remove" onclick="removeDB()">usuń bieżącą</button>
+            </div>
+            <div id="dbs-list">
+    
+            </div>
+        </div>
+        <div id="colls">
+            <p id="colls-info">Bieżąca kolekcja: nie wybrano</p>
+            <div id="colls-opers">
+                <button class="btn-add" onclick="addColl()">nowa kolekcja</button>
+                <button class="btn-remove" onclick="removeColl()">usuń bieżącą</button>
+            </div>
+            <div id="colls-list">
+
+            </div>
+        </div>
+        <div id="docs">
+            <p id="docs-info">Dokumenty: </p>
+            <div id="docs-opers">
+                <button class="btn-add" onclick="addDoc()">nowy dokument</button>
+            </div>
+            <div id="docs-list">
+                <p>brak dokumentów w kolekcji</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        newConnect()
+
+        let currentDB = null
+        let currentColl = null
+
+        function newConnect(){
+            let host = prompt("Podaj ip serwera MongoDB")
+            if(host != null){
+                //console.log(host)
+                connect(host)
+            }
+        }
+
+        function connect(host){
+            const body = JSON.stringify({host:host});
+            const headers = { "Content-Type": "application/json" }
+            fetch("/connect", { method: "post", body, headers})
+                .then(response => response.json())
+                .then(data =>{
+                    if(data.problem){
+                        if(confirm(`Problem z połączeniem z adresem ${host}. Połączyć z localhost?`)){
+                            connect("localhost")
+                        }
+                    }else{
+                        document.querySelector("#header-info-address").innerText = " Połączono z " + host
+                        document.querySelector("#dbs-info").innerText = "Bieżąca baza danych: " + data.currentDB
+                        listDbs(data.dbList)
+                        if(data.currentDB != "nie wybrano"){
+                            useDB(data.currentDB)
+                        }
+                        currentDB = null
+                        currentColl = null        
+                    }
+                })
+        }
+
+        function useDB(db){
+            const body = JSON.stringify({db:db})
+            const headers = { "Content-Type": "application/json" }
+            fetch("/useDB", {method: "post", body, headers})
+                .then(response => response.json())
+                .then(data => {
+                    currentDB = data.currentDB
+                    currentColl = null
+                    colls = data.collsList
+                    document.querySelector("#dbs-info").innerText = "Bieżąca baza danych: " + currentDB
+                    document.querySelector("#colls-info").innerText = "Bieżąca kolekcja: " + data.currentColl
+                    document.querySelector("#docs-info").innerText = "Dokumenty: "
+                    listColls(colls)
+                    listDocs([])
+                })
+        }
+
+        function useColl(coll){
+            const body = JSON.stringify({coll:coll})
+            const headers = { "Content-Type": "application/json" }
+            fetch("/useColl", {method: "post", body, headers})
+                .then(response => response.json())
+                .then(data => {
+                    currentColl = data.currentColl
+                    document.querySelector("#colls-info").innerText = "Bieżąca kolekcja: " + currentColl;
+                    document.querySelector("#docs-info").innerText = "Dokumenty: " + currentDB + " / " + currentColl;
+                    (!data.docs[0]) ? document.querySelector("#docs-list").innerHTML = "<p>brak dokumentów w kolekcji</p>" : listDocs(data.docs)
+                })
+        }
+
+        function addDB(){
+            let dbName = prompt("Podaj nazwę nowej bazy")
+            if(dbName){
+                const body = JSON.stringify({dbName:dbName})
+                const headers = { "Content-Type": "application/json" }
+                fetch("/addDB", {method: "post", body, headers})
+                .then(response => response.json())
+                .then(data => {
+                    // console.log(data.dbList)
+                    listDbs(data.dbList)
+                    useDB(data.currentDB)
+                })
+            }
+        }
+        
+        function addColl(){
+            let collName = prompt("Podaj nazwę nowej kolekcji")
+            if(collName){
+                const body = JSON.stringify({collName:collName})
+                const headers = { "Content-Type": "application/json" }
+                fetch("/addColl", {method: "post", body, headers})
+                .then(response => response.json())
+                .then(data => {
+                    //console.log(data)
+                    useColl(data.currentColl)
+                    listColls(data.collsList)
+                })
+            }
+        }
+
+        function removeDB(){
+            if(currentDB){
+                if(confirm("Czy na pewno usunąć bazę danych?")){
+                    const body = JSON.stringify({currentDB:currentDB})
+                    const headers = { "Content-Type": "application/json" }
+                    fetch("/removeDB", {method: "post", body, headers})
+                    .then(response => response.json())
+                    .then(data => {
+                        //console.log(data)
+                        currentDB = null
+                        currentColl = null
+                        document.querySelector("#dbs-info").innerText = "Bieżąca baza danych: " + data.currentDB
+                        document.querySelector("#colls-info").innerText = "Bieżąca kolekcja: " + data.currentColl
+                        document.querySelector("#docs-info").innerText = "Dokumenty: "
+                        listDbs(data.dbList)
+                        listColls([])
+                        listDocs([])
+
+                })
+                }
+            }
+        }
+
+        function removeColl(){
+            if(currentColl){
+                if(confirm("Czy na pewno usunąć kolekcję?")){
+                    const body = JSON.stringify({collName:currentColl})
+                    const headers = { "Content-Type": "application/json" }
+                    fetch("/removeColl", {method: "post", body, headers})
+                    .then(response => response.json())
+                    .then(data => {
+                        //console.log(data)
+                        currentColl = null
+                        document.querySelector("#colls-info").innerText = "Bieżąca kolekcja: " + data.currentColl
+                        document.querySelector("#docs-info").innerText = "Dokumenty: "
+                        listColls(data.collsList)
+                        listDocs([])
+                    })
+                }
+            }
+        }
+
+        function addDoc(){
+            if(currentColl){
+                let docsListHTML = document.querySelector("#docs-list")
+
+                let div = document.createElement("div")
+                div.classList.add("info")
+                div.classList.add("newdoc")
+                div.setAttribute("id","newdoc")
+                div.setAttribute("contenteditable", "true")
+                div.innerText = "{}"
+                
+                let button = document.createElement("button")
+                button.innerText = "zapisz nowy dokument"
+                button.classList.add("btn-save")
+                button.setAttribute('onclick','saveDoc()')
+
+                docsListHTML.innerHTML = ""
+                docsListHTML.appendChild(div)
+                docsListHTML.appendChild(button)
+            }
+        }
+
+        function saveDoc(){
+                const body = document.querySelector("#newdoc").innerText
+                try{
+                    let jsonTest = JSON.parse(body)
+                    const headers = { "Content-Type": "application/json" }
+                    fetch("/saveDoc", {method: "post", body, headers})
+                    .then(response => response.json())
+                    .then(data => {
+                        listDocs(data.docs)
+                        //useColl(data.currentColl)
+                        //listColls(data.collsList)
+                    })
+                }
+                catch{
+                    alert("Błąd jsona!")
+                }           
+        }
+
+        function removeDoc(id){
+            if(confirm("Czy na pewno usunąć?")){
+                const body = JSON.stringify({id:id})
+                const headers = { "Content-Type": "application/json" }
+                console.log(body)
+                fetch('/removeDoc', {method: "post", body, headers})
+                .then(response => response.json())
+                .then(data => {
+                    listDocs(data.docs)
+                })
+            }
+        }
+
+        function editDoc(id){
+            const body = JSON.stringify({_id:id})
+            const headers = { "Content-Type": "application/json" }
+                    fetch("/editDoc", {method: "post", body, headers})
+                    .then(response => response.json())
+                    .then(data => {
+                        let docsListHTML = document.querySelector("#docs-list")
+
+                        let div = document.createElement("div")
+                        div.classList.add("info")
+                        div.classList.add("newdoc")
+                        div.setAttribute("id","newdoc")
+                        div.setAttribute("contenteditable", "true")
+                        div.innerText = JSON.stringify(data[0])
+                        
+                        let opers = document.createElement('div')
+                        opers.classList.add('docs-opers')
+                        
+                        let buttonSave = document.createElement("button")
+                        buttonSave.innerText = "zapisz"
+                        buttonSave.classList.add("btn-save")
+                        buttonSave.setAttribute('onclick','saveEditedDoc(id)')
+
+                        let buttonCancel = document.createElement("button")
+                        buttonCancel.innerText = "anuluj"
+                        buttonCancel.classList.add("btn")
+                        buttonCancel.setAttribute('onclick','useColl(currentColl)')
+
+                        opers.appendChild(buttonSave)
+                        opers.appendChild(buttonCancel)
+
+                        docsListHTML.innerHTML = ""
+                        docsListHTML.appendChild(div)
+                        docsListHTML.appendChild(opers)
+                    })
+        }
+
+        function saveEditedDoc(id){
+            const body = document.querySelector("#newdoc").innerText
+                try{
+                    let jsonTest = JSON.parse(body)
+                    const headers = { "Content-Type": "application/json" }
+                    fetch("/saveEditedDoc", {method: "post", body, headers})
+                    .then(response => response.json())
+                    .then(data => {
+                        listDocs(data.docs)
+                        //useColl(data.currentColl)
+                        //listColls(data.collsList)
+                    })
+                }
+                catch{
+                    alert("Błąd jsona!")
+                }           
+        }
+/*
+        function dismissEditedDoc(){
+
+        }*/
+
+        function listDbs(dbs){
+            document.querySelector("#dbs-list").innerText = ""
+            dbs.forEach(db => {
+                            let dbItem = document.createElement("button")
+                            dbItem.innerText = db
+                            dbItem.setAttribute("onclick", `useDB("${db}")`)
+                            dbItem.classList.add("btn-link")
+                            document.querySelector("#dbs-list").appendChild(dbItem);
+                        })
+        }
+
+        function listColls(colls){
+            document.querySelector("#colls-list").innerText = ""
+            colls.forEach(coll=>{
+                        let collItem = document.createElement("button")
+                            collItem.innerText = coll
+                            collItem.setAttribute("onclick", `useColl("${coll}")`)
+                            collItem.classList.add("btn-link")
+                            document.querySelector("#colls-list").appendChild(collItem);
+                    })
+        }
+
+        function listDocs(docs){
+            document.querySelector("#docs-list").innerText = ""
+
+            if(docs.length == 0){
+                document.querySelector("#docs-list").innerHTML = "<p>brak dokumentów w kolekcji</p>"
+            }
+
+            docs.forEach(doc=>{
+                        let info = document.createElement("div")
+                        info.innerText = JSON.stringify(doc, null, 3)
+                        info.classList.add('info')
+
+                        let buttons = document.createElement("div")
+                        buttons.classList.add("docs-opers")
+
+                        let buttonEdit = document.createElement("button")
+                        buttonEdit.innerText = "edytuj"
+                        buttonEdit.classList.add("btn-save")
+                        buttonEdit.setAttribute('onclick', `editDoc('${doc._id}')`)
+
+                        let buttonRemove = document.createElement("button")
+                        buttonRemove.innerText = "usuń"
+                        buttonRemove.classList.add("btn-remove")
+                        buttonRemove.setAttribute('onclick', `removeDoc('${doc._id}')`)
+                        
+                        buttons.appendChild(buttonEdit)
+                        buttons.appendChild(buttonRemove)
+
+                        document.querySelector("#docs-list").appendChild(info);
+                        document.querySelector("#docs-list").appendChild(buttons);
+                    })
+        }
+    </script>
+</body>
+
+</html>
